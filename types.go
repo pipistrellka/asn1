@@ -13,6 +13,7 @@ var (
 	bitStringType = reflect.TypeOf(BitString{})
 	oidType       = reflect.TypeOf(Oid{})
 	nullType      = reflect.TypeOf(Null{})
+	enumType      = reflect.TypeOf(Enum(0))
 )
 
 /*
@@ -237,6 +238,10 @@ func (ctx *Context) decodeString(data []byte, value reflect.Value) error {
 /*
  * Custom types
  */
+
+// ENUM
+
+type Enum int
 
 // BIT STRING
 
