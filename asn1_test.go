@@ -1,6 +1,7 @@
 package asn1
 
 import (
+	"fmt"
 	"math/big"
 	"reflect"
 	"testing"
@@ -26,9 +27,14 @@ type testCase struct {
 	expected []byte
 }
 
+func (t testCase) String() string {
+	return fmt.Sprintf("testCase: value %#v (%T) expects %#v", t.value, t.value, t.expected)
+}
+
 // testEncode encodes an object and compares with the expected bytes.
 func testEncode(t *testing.T, ctx *Context, options string, tests ...testCase) {
 	for _, test := range tests {
+		t.Logf("Testing case: %v", test)
 		data, err := ctx.EncodeWithOptions(test.value, options)
 		if err != nil {
 			t.Fatal(err)
@@ -260,6 +266,22 @@ func TestOctetString(t *testing.T) {
 	}
 }
 
+func TestBitString(t *testing.T) {
+	// bit string 011011100101110111
+	bs := BitString{
+		Bytes:     []byte{0x6e, 0x5d, 0xc0},
+		BitLength: 18,
+	}
+	encoded := []byte{0x03, 0x04, 0x06, 0x6e, 0x5d, 0xc0}
+	// make sure it's the right string
+	if bs.At(0) != 0 || bs.At(4) != 1 || bs.At(14) != 0 || bs.At(17) != 1 {
+		t.Fatal("incorrect bitstring constructed for testing")
+	}
+
+	ctx := NewContext()
+	testEncodeDecode(t, ctx, "", testCase{value: bs, expected: encoded})
+}
+
 func TestSimpleOid(t *testing.T) {
 	// Cases that encoding and decoding do not match
 	tests := []testCase{
@@ -428,6 +450,38 @@ func TestDerSet(t *testing.T) {
 	if _, ok := err.(*ParseError); !ok {
 		t.Fatal("Unexpected error:", err)
 	}
+}
+
+func TestIgnore(t *testing.T) {
+	type Type struct {
+		B string
+		C bool `asn1:"-"`
+	}
+	encodeTest := testCase{
+		Type{"abc", true},
+		[]byte{
+			// SEQ LEN=8
+			0x30, 0x05,
+			// OCTETSTRING LEN=3
+			0x04, 0x03,
+			// "abc"
+			0x61, 0x62, 0x63,
+		},
+	}
+	decodeTest := testCase{
+		Type{"abc", false},
+		[]byte{
+			// SEQ LEN=8
+			0x30, 0x05,
+			// OCTETSTRING LEN=3
+			0x04, 0x03,
+			// "abc"
+			0x61, 0x62, 0x63,
+		},
+	}
+	ctx := NewContext()
+	testEncode(t, ctx, "", encodeTest)
+	testDecode(t, ctx, "", decodeTest)
 }
 
 func TestOptional(t *testing.T) {
@@ -669,4 +723,31 @@ func TestArraySlice(t *testing.T) {
 	}
 	ctx := NewContext()
 	testEncodeDecode(t, ctx, "", testCases...)
+}
+
+func TestPointerInterface(t *testing.T) {
+	type I interface{}
+	type Type struct {
+		A int
+		B string
+		C bool
+	}
+	var obj I
+	obj = &Type{1, "abc", true}
+	ctx := NewContext()
+	// We cannot use testSimple because the type is I
+	data, err := ctx.Encode(obj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := new(Type)
+	rest, err := ctx.Decode(data, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rest) > 0 {
+		t.Fatalf("Unexpected remaining bytes when decoding \"%v\": %#v\n",
+			obj, rest)
+	}
+	checkEqual(t, obj, value)
 }
