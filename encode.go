@@ -96,6 +96,9 @@ func (ctx *Context) encodeValue(value reflect.Value, opts *fieldOptions) (raw *r
 	case nullType:
 		raw.Tag = tagNull
 		encoder = ctx.encodeNull
+	case enumType:
+		raw.Tag = tagEnum
+		encoder = ctx.encodeInt
 	}
 
 	if encoder == nil {

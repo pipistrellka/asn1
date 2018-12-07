@@ -273,6 +273,9 @@ func (ctx *Context) getUniversalTag(objType reflect.Type, opts *fieldOptions) (e
 	case nullType:
 		elem.tag = tagNull
 		elem.decoder = ctx.decodeNull
+	case enumType:
+		elem.tag = tagEnum
+		elem.decoder = ctx.decodeInt
 	default:
 		// Generic types:
 		elem = ctx.getUniversalTagByKind(objType, opts)
