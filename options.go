@@ -109,7 +109,7 @@ func parseBoolOption(args []string) (bool, error) {
 // parseIntOption parses an integer argument.
 func parseIntOption(args []string) (*int, error) {
 	if len(args) != 2 {
-		return nil, syntaxError("option '%s' does not have arguments.")
+		return nil, syntaxError("option does not have arguments.")
 	}
 	num, err := strconv.Atoi(args[1])
 	if err != nil {
@@ -122,7 +122,7 @@ func parseIntOption(args []string) (*int, error) {
 // parseStringOption parses a string argument.
 func parseStringOption(args []string) (*string, error) {
 	if len(args) != 2 {
-		return nil, syntaxError("option '%s' does not have arguments.")
+		return nil, syntaxError("option does not have arguments.")
 	}
 	return &args[1], nil
 }
