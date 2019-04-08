@@ -15,6 +15,7 @@ type fieldOptions struct {
 	tag          *int
 	defaultValue *int
 	choice       *string
+	choices      *string
 }
 
 // validate returns an error if any option is invalid.
@@ -90,6 +91,9 @@ func parseOption(opts *fieldOptions, args []string) error {
 
 	case "choice":
 		opts.choice, err = parseStringOption(args)
+
+	case "choices":
+		opts.choices, err = parseStringOption(args)
 
 	default:
 		err = syntaxError("Invalid option: %s", args[0])

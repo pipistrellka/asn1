@@ -710,6 +710,36 @@ func TestNestedExplicitChoice(t *testing.T) {
 	}
 }
 
+func TestArrayOfChoices(t *testing.T) {
+	type Type struct {
+		Num  int
+		Msgs []interface{} `asn1:"choices:msg"`
+	}
+
+	ctx := NewContext()
+	ctx.AddChoice("msg", []Choice{
+		{reflect.TypeOf(int(0)), "tag:0"},
+		{reflect.TypeOf(""), "tag:1"},
+	})
+
+	choices := []interface{}{"abc", 1, "zxc"}
+	obj := Type{1, choices}
+	data, err := ctx.Encode(obj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	decodedObj := Type{}
+	_, err = ctx.Decode(data, &decodedObj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(decodedObj.Msgs, choices) {
+		t.Fatalf("Incorrect choice value.\n Expected: %v\t Got: %v", choices, decodedObj.Msgs)
+	}
+}
+
 func TestArraySlice(t *testing.T) {
 	testCases := []testCase{
 		{

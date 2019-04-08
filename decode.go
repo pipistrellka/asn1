@@ -2,6 +2,7 @@ package asn1
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"reflect"
 	"sort"
@@ -329,10 +330,14 @@ func (ctx *Context) getUniversalTagByKind(objType reflect.Type, opts *fieldOptio
 		}
 
 	case reflect.Slice:
-		if objType.Elem().Kind() == reflect.Uint8 {
+		switch objType.Elem().Kind() {
+		case reflect.Uint8:
 			elem.tag = tagOctetString
 			elem.decoder = ctx.decodeOctetString
-		} else {
+		case reflect.Interface:
+			elem.tag = tagSequence
+			elem.decoder = ctx.decodeChoices(*opts.choices)
+		default:
 			elem.tag = tagSequence
 			elem.decoder = ctx.decodeSlice
 		}
@@ -529,6 +534,24 @@ func (ctx *Context) decodeSlice(data []byte, value reflect.Value) error {
 	}
 	value.Set(slice)
 	return nil
+}
+
+// decodeChoices decodes a slice of interface which represent choice.
+func (ctx *Context) decodeChoices(choiceName string) func([]byte, reflect.Value) error {
+	return func(data []byte, value reflect.Value) error {
+		slice := reflect.New(value.Type()).Elem()
+		var err error
+		for len(data) > 0 {
+			elem := reflect.New(value.Type().Elem()).Elem()
+			data, err = ctx.DecodeWithOptions(data, elem.Addr().Interface(), fmt.Sprintf("choice:%s", choiceName))
+			if err != nil {
+				return err
+			}
+			slice.Set(reflect.Append(slice, elem))
+		}
+		value.Set(slice)
+		return nil
+	}
 }
 
 // decodeArray decodes a SET(OF) as an array

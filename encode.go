@@ -1,6 +1,7 @@
 package asn1
 
 import (
+	"fmt"
 	"reflect"
 	"sort"
 	"unicode"
@@ -129,10 +130,15 @@ func (ctx *Context) encodeValue(value reflect.Value, opts *fieldOptions) (raw *r
 			}
 
 		case reflect.Array, reflect.Slice:
-			if objType.Elem().Kind() == reflect.Uint8 {
+			switch objType.Elem().Kind() {
+			case reflect.Uint8:
 				raw.Tag = tagOctetString
 				encoder = ctx.encodeOctetString
-			} else {
+			case reflect.Interface:
+				raw.Tag = tagSequence
+				raw.Constructed = true
+				encoder = ctx.encodeChoices(*opts.choices)
+			default:
 				raw.Tag = tagSequence
 				raw.Constructed = true
 				encoder = ctx.encodeSlice
@@ -301,4 +307,20 @@ func (ctx *Context) encodeSlice(value reflect.Value) ([]byte, error) {
 		content = append(content, childBytes...)
 	}
 	return content, nil
+}
+
+// encodeChoices encodes a slice of interface which represent choice.
+func (ctx *Context) encodeChoices(choiceName string) func(reflect.Value) ([]byte, error) {
+	return func(value reflect.Value) ([]byte, error) {
+		content := []byte{}
+		for i := 0; i < value.Len(); i++ {
+			itemValue := value.Index(i)
+			childBytes, err := ctx.EncodeWithOptions(itemValue.Interface(), fmt.Sprintf("choice:%s", choiceName))
+			if err != nil {
+				return nil, err
+			}
+			content = append(content, childBytes...)
+		}
+		return content, nil
+	}
 }
