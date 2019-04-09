@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
+	"time"
 )
 
 // Pre-calculated types for convenience
@@ -14,6 +15,7 @@ var (
 	oidType       = reflect.TypeOf(Oid{})
 	nullType      = reflect.TypeOf(Null{})
 	enumType      = reflect.TypeOf(Enum(0))
+	utcTimeType   = reflect.TypeOf(UTCTime{})
 )
 
 /*
@@ -493,4 +495,52 @@ func wrongType(typeName string, value reflect.Value) error {
 	return syntaxError(
 		"invalid Go type '%s' found when expecting '%s'",
 		value.Type(), typeName)
+}
+
+// UTCTime ::= [UNIVERSAL 23] "YYMMDDhhmm[ss]Z" or "YYMMDDhhmm[ss](+|-)hhmm"
+type UTCTime struct {
+	time.Time
+}
+
+func (ctx *Context) decodeUTCTime(data []byte, value reflect.Value) error {
+	tobj, err := parseUTCTime(data)
+	if err != nil {
+		return err
+	}
+	value.Set(reflect.ValueOf(UTCTime{tobj}))
+	return nil
+}
+
+func (ctx *Context) encodeUTCTime(value reflect.Value) ([]byte, error) {
+	utcTime, ok := value.Interface().(UTCTime)
+	if !ok {
+		return nil, wrongType(utcTimeType.String(), value)
+	}
+	return []byte(utcTime.Format("060102150405Z0700")), nil
+}
+
+func parseUTCTime(bytes []byte) (ret time.Time, err error) {
+	s := string(bytes)
+
+	formatStr := "0601021504Z0700"
+	ret, err = time.Parse(formatStr, s)
+	if err != nil {
+		formatStr = "060102150405Z0700"
+		ret, err = time.Parse(formatStr, s)
+	}
+	if err != nil {
+		return
+	}
+
+	if serialized := ret.Format(formatStr); serialized != s {
+		err = fmt.Errorf("asn1: time did not serialize back to the original value and may be invalid: given %q, but serialized as %q", s, serialized)
+		return
+	}
+
+	if ret.Year() >= 2050 {
+		// UTCTime only encodes times prior to 2050. See https://tools.ietf.org/html/rfc5280#section-4.1.2.5.1
+		ret = ret.AddDate(-100, 0, 0)
+	}
+
+	return
 }
