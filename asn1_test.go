@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"reflect"
 	"testing"
+	"time"
 )
 
 // isBytesEqual compares two byte arrays/slices.
@@ -280,6 +281,15 @@ func TestBitString(t *testing.T) {
 
 	ctx := NewContext()
 	testEncodeDecode(t, ctx, "", testCase{value: bs, expected: encoded})
+}
+
+func TestUTCTime(t *testing.T) {
+	// 190401102848Z
+	utcTime := UTCTime{time.Date(2019, time.Month(4), 1, 10, 28, 48, 0, time.UTC)}
+	encoded := []byte{0x17, 0xd, 0x31, 0x39, 0x30, 0x34, 0x30, 0x31, 0x31, 0x30, 0x32, 0x38, 0x34, 0x38, 0x5a}
+
+	ctx := NewContext()
+	testEncodeDecode(t, ctx, "", testCase{value: utcTime, expected: encoded})
 }
 
 func TestSimpleOid(t *testing.T) {

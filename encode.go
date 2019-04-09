@@ -100,6 +100,9 @@ func (ctx *Context) encodeValue(value reflect.Value, opts *fieldOptions) (raw *r
 	case enumType:
 		raw.Tag = tagEnum
 		encoder = ctx.encodeInt
+	case utcTimeType:
+		raw.Tag = tagUtcTime
+		encoder = ctx.encodeUTCTime
 	}
 
 	if encoder == nil {
