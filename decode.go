@@ -6,6 +6,7 @@ import (
 	"io"
 	"reflect"
 	"sort"
+	"strings"
 )
 
 // Expected values
@@ -134,7 +135,6 @@ func (ctx *Context) Decode(data []byte, obj interface{}) (rest []byte, err error
 // decoding in DER.
 //
 func (ctx *Context) DecodeWithOptions(data []byte, obj interface{}, options string) (rest []byte, err error) {
-
 	opts, err := parseOptions(options)
 	if err != nil {
 		return nil, err
@@ -145,6 +145,8 @@ func (ctx *Context) DecodeWithOptions(data []byte, obj interface{}, options stri
 	}
 
 	value := reflect.ValueOf(obj)
+	fmt.Println("Start decoding", value.Type(), value.Kind())
+
 	switch value.Kind() {
 	case reflect.Ptr, reflect.Interface:
 		value = value.Elem()
@@ -237,6 +239,7 @@ func (ctx *Context) getExpectedElement(raw *rawValue, elemType reflect.Type, opt
 		// Get the decoder for the new value
 		elem.class, elem.tag = raw.Class, raw.Tag
 		elem.decoder = func(data []byte, value reflect.Value) error {
+			fmt.Println("decoder choice", *opts.choice, entry.typ, value.Type())
 			// Allocate a new value and set to the current one
 			nestedValue := reflect.New(entry.typ).Elem()
 			err = entry.decoder(data, nestedValue)
@@ -365,6 +368,69 @@ func (ctx *Context) getExpectedFieldElements(value reflect.Value) ([]expectedFie
 			}
 			// Expand choices
 			raw := &rawValue{}
+
+			if opts.variant != nil {
+				fmt.Println("varuant decode", *opts.variant)
+				for k := 0; k < field.NumField(); k++ {
+					variantValue := field.Field(k)
+					variantStruct := field.Type().Field(k)
+
+					entries, err := ctx.getVariantsByField(*opts.variant, variantStruct.Name)
+					if err != nil {
+						return nil, err
+					}
+					fmt.Println("entries", entries)
+
+					if len(entries) == 0 {
+						t := variantStruct.Tag.Get(tagKey)
+						o, err := parseOptions(t)
+						if err != nil {
+							return nil, err
+						}
+						elem, err := ctx.getExpectedElement(raw, variantValue.Type(), o)
+						if err != nil {
+							return nil, err
+						}
+						expectedValues = append(expectedValues, expectedFieldElement{elem, variantValue, o})
+					} else {
+						// Get the decoder for the new value
+						var elem expectedElement
+						elem.class, elem.tag = entries[0].class, entries[0].tag
+						elem.decoder = func(data []byte, value reflect.Value) error {
+							// Allocate a new value and set to the current one
+							var nestedValue reflect.Value
+							var errors []string
+							var success bool
+							for _, entry := range entries {
+								// TODO: непонятно как инициализировать интерфейс
+								if entry.typ.String() != "struct {}" {
+									nestedValue = reflect.New(entry.typ).Elem()
+								} else {
+									nestedValue = variantValue // interface {}
+								}
+								fmt.Println("entry decoder", entry.typ.String(), "name:", entry.typ.Name(), "field:", variantValue.Type(), value)
+								err := entry.decoder(data, nestedValue)
+								if err == nil {
+									success = true
+									break
+								} else {
+									errors = append(errors, err.Error())
+								}
+							}
+							if !success {
+								return fmt.Errorf("decode variant failed, try in %s", strings.Join(errors, ", "))
+							}
+							value.Set(nestedValue)
+							return nil
+						}
+
+						expectedValues = append(expectedValues,
+							expectedFieldElement{elem, variantValue, opts})
+					}
+				}
+				continue
+			}
+
 			if opts.choice == nil {
 				elem, err := ctx.getExpectedElement(raw, field.Type(), opts)
 				if err != nil {
@@ -427,7 +493,9 @@ func (ctx *Context) matchExpectedValues(eValues []expectedFieldElement, rValues 
 		missing := true
 		if rIndex < len(rValues) {
 			raw := rValues[rIndex]
+			fmt.Println(e.value.Type(), e.class, "=", raw.Class, e.tag, "=", raw.Tag, e.opts.String())
 			if e.class == raw.Class && e.tag == raw.Tag {
+				fmt.Println("decoder element", e.value)
 				err := e.decoder(raw.Content, e.value)
 				if err != nil {
 					return err
@@ -458,7 +526,7 @@ func (ctx *Context) matchExpectedValues(eValues []expectedFieldElement, rValues 
 
 // setMissingFieldValue uses opts values to set the default value.
 func (ctx *Context) setMissingFieldValue(e expectedFieldElement) error {
-	if e.opts.optional || e.opts.choice != nil {
+	if e.opts.optional || e.opts.choice != nil || e.opts.variant != nil {
 		return nil
 	}
 	if e.opts.defaultValue != nil {
@@ -468,7 +536,7 @@ func (ctx *Context) setMissingFieldValue(e expectedFieldElement) error {
 		}
 		return nil
 	}
-	return parseError("missing value for [%d %d]", e.class, e.tag)
+	return parseError("missing value for [%d %d] %s %s", e.class, e.tag, e.value.Type(), e.opts.String())
 }
 
 // decodeStruct decodes struct fields in order

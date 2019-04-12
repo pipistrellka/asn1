@@ -1,6 +1,7 @@
 package asn1
 
 import (
+	"encoding/hex"
 	"fmt"
 	"math/big"
 	"reflect"
@@ -747,6 +748,136 @@ func TestArrayOfChoices(t *testing.T) {
 
 	if !reflect.DeepEqual(decodedObj.Msgs, choices) {
 		t.Fatalf("Incorrect choice value.\n Expected: %v\t Got: %v", choices, decodedObj.Msgs)
+	}
+}
+
+// TAGGED ::= CLASS {
+// 	&id ObjectDescriptor UNIQUE,
+// 	&Data
+// } WITH SYNTAX {
+// 	OID &id
+// 	DATA &Data
+// }
+func TestClassObjects(t *testing.T) {
+	type Tagged struct {
+		ID   string `asn1:"universal,tag:7"`
+		Data interface{}
+	}
+	type Type struct {
+		Name  string `asn1:"universal,tag:12"`
+		Items []int
+		Info  Tagged `asn1:"variant:scope"`
+	}
+
+	ctx := NewContext()
+	ctx.AddVariants("scope", []Variant{
+		{"12", "Data", reflect.TypeOf([]int{}), ""},
+		{"11", "Data", reflect.TypeOf([]string{}), ""},
+	})
+	obj := Type{"name", []int{2, 4, 6}, Tagged{"12", []int{1, 3, 5}}}
+
+	data, err := ctx.EncodeWithOptions(obj, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(hex.EncodeToString(data))
+
+	decodedObj := Type{}
+	_, err = ctx.DecodeWithOptions(data, &decodedObj, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fmt.Println(decodedObj.Info.Data)
+
+	if !reflect.DeepEqual(decodedObj, obj) {
+		t.Fatalf("Incorrect variants value.\n Expected: %v\t Got: %v", obj, decodedObj)
+	}
+}
+
+func TestClassObjectWithOpts(t *testing.T) {
+	type Tagged struct {
+		ID   string `asn1:"universal,tag:7,unique"`
+		Data interface{}
+	}
+	type Type struct {
+		Info Tagged `asn1:"variant:tags"`
+	}
+
+	ctx := NewContext()
+	err := ctx.AddVariants("tags", []Variant{
+		{"1", "Data", reflect.TypeOf(""), "universal,tag:7"},
+		{"2", "Data", reflect.TypeOf(""), "universal,tag:12"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	obj := Type{Tagged{"1", "112"}}
+
+	data, err := ctx.Encode(obj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(hex.EncodeToString(data))
+
+	decodedObj := Type{}
+	_, err = ctx.Decode(data, &decodedObj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fmt.Println(decodedObj.Info.Data)
+
+	if !reflect.DeepEqual(decodedObj, obj) {
+		t.Fatalf("Incorrect variants value.\n Expected: %v\t Got: %v", obj, decodedObj)
+	}
+}
+
+func TestClassObjectWithChoices(t *testing.T) {
+	type Tagged struct {
+		ID   string `asn1:"universal,tag:7,unique"`
+		Data interface{}
+	}
+	type Type struct {
+		Info Tagged `asn1:"variant:choices"`
+	}
+
+	ctx := NewContext()
+	ctx.AddChoice("msg", []Choice{
+		{reflect.TypeOf(int(0)), "tag:0"},
+		{reflect.TypeOf(""), "tag:1"},
+	})
+	ctx.AddChoice("times", []Choice{
+		{reflect.TypeOf(UTCTime{time.Now()}), "tag:0"},
+	})
+	err := ctx.AddVariants("choices", []Variant{
+		{"1", "Data", reflect.TypeOf(struct{}{}), "choice:msg"},
+		{"2", "Data", reflect.TypeOf(struct{}{}), "choice:times"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	obj := Type{Tagged{"2", UTCTime{time.Date(2019, time.Month(4), 1, 0, 0, 0, 0, time.UTC)}}}
+
+	data, err := ctx.EncodeWithOptions(obj, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if hex.EncodeToString(data) != "3012070132800d3139303430313030303030305a" {
+		t.Fatalf("Encode failed: get %s", hex.EncodeToString(data))
+	}
+
+	decodedObj := Type{}
+	_, err = ctx.DecodeWithOptions(data, &decodedObj, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fmt.Println(decodedObj.Info.Data)
+
+	if !reflect.DeepEqual(decodedObj, obj) {
+		t.Fatalf("Incorrect variants value.\n Expected: %v\t Got: %v", obj, decodedObj)
 	}
 }
 

@@ -1,6 +1,7 @@
 package asn1
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -11,11 +12,13 @@ type fieldOptions struct {
 	explicit     bool
 	indefinite   bool
 	optional     bool
+	unique       bool
 	set          bool
 	tag          *int
 	defaultValue *int
 	choice       *string
 	choices      *string
+	variant      *string
 }
 
 // validate returns an error if any option is invalid.
@@ -80,6 +83,9 @@ func parseOption(opts *fieldOptions, args []string) error {
 	case "optional":
 		opts.optional, err = parseBoolOption(args)
 
+	case "unique":
+		opts.unique, err = parseBoolOption(args)
+
 	case "set":
 		opts.set, err = parseBoolOption(args)
 
@@ -95,10 +101,52 @@ func parseOption(opts *fieldOptions, args []string) error {
 	case "choices":
 		opts.choices, err = parseStringOption(args)
 
+	case "variant":
+		opts.variant, err = parseStringOption(args)
+
 	default:
 		err = syntaxError("Invalid option: %s", args[0])
 	}
 	return err
+}
+
+func (opts *fieldOptions) String() string {
+	var result []string
+	if opts.universal {
+		result = append(result, "universal")
+	}
+	if opts.application {
+		result = append(result, "application")
+	}
+	if opts.explicit {
+		result = append(result, "explicit")
+	}
+	if opts.indefinite {
+		result = append(result, "indefinite")
+	}
+	if opts.optional {
+		result = append(result, "optional")
+	}
+	if opts.unique {
+		result = append(result, "unique")
+	}
+	if opts.set {
+		result = append(result, "set")
+	}
+	if opts.tag != nil {
+		result = append(result, strconv.Itoa(*opts.tag))
+	}
+	if opts.choice != nil {
+		result = append(result, fmt.Sprintf("choice:%s", *opts.choice))
+	}
+	if opts.choices != nil {
+		result = append(result, fmt.Sprintf("choices:%s", *opts.choices))
+	}
+	if opts.variant != nil {
+		result = append(result, fmt.Sprintf("variant:%s", *opts.variant))
+	}
+
+	return strings.Join(result, ",")
 }
 
 // parseBoolOption just checks if no arguments were given.

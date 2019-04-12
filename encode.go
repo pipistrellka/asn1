@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 	"unicode"
 )
 
@@ -40,6 +41,8 @@ func (ctx *Context) EncodeWithOptions(obj interface{}, options string) (data []b
 
 // Main encode function
 func (ctx *Context) encode(value reflect.Value, opts *fieldOptions) (*rawValue, error) {
+	ctx.nested++
+	fmt.Println(strings.Join(make([]string, ctx.nested), "----"), "encode     ", value.Type(), value.Kind(), "asn1:", opts.String())
 
 	// Skip the interface type
 	value = getActualType(value)
@@ -62,6 +65,7 @@ func (ctx *Context) encode(value reflect.Value, opts *fieldOptions) (*rawValue, 
 	if err != nil {
 		return nil, err
 	}
+	fmt.Println(strings.Join(make([]string, ctx.nested), "----"), "raw value tag", raw.Tag, "for", value.Type())
 
 	// Since the empty flag is already calculated, check if it's optional
 	if (opts.optional || opts.defaultValue != nil) && empty {
@@ -73,11 +77,12 @@ func (ctx *Context) encode(value reflect.Value, opts *fieldOptions) (*rawValue, 
 	if err != nil {
 		return nil, err
 	}
-
+	ctx.nested--
 	return raw, nil
 }
 
 func (ctx *Context) encodeValue(value reflect.Value, opts *fieldOptions) (raw *rawValue, err error) {
+	fmt.Println(strings.Join(make([]string, ctx.nested), "----"), "encodeValue", value.Type(), value.Kind(), "asn1:", opts.String())
 
 	raw = &rawValue{}
 	encoder := encoderFunction(nil)
@@ -152,6 +157,7 @@ func (ctx *Context) encodeValue(value reflect.Value, opts *fieldOptions) (raw *r
 	if encoder == nil {
 		return nil, syntaxError("invalid Go type: %s", value.Type())
 	}
+	fmt.Println(strings.Join(make([]string, ctx.nested), "----"), "encoder    ", value.Type(), value.Kind(), "asn1:", opts.String())
 	raw.Content, err = encoder(value)
 	return
 }
@@ -250,11 +256,49 @@ func (ctx *Context) getRawValuesFromFields(value reflect.Value) ([]*rawValue, er
 			if opts == nil {
 				continue
 			}
-			raw, err := ctx.encode(fieldValue, opts)
-			if err != nil {
-				return nil, err
+
+			if opts.variant != nil {
+				var uniqueValue string
+				for k := 0; k < fieldValue.NumField(); k++ {
+					variantValue := fieldValue.Field(k)
+					variantStruct := fieldValue.Type().Field(k)
+
+					var o *fieldOptions
+					if uniqueValue != "" {
+						elem, err := ctx.getVariant(*opts.variant, uniqueValue, variantStruct.Name)
+						if err != nil {
+							return nil, err
+						}
+						// check type ?
+						o = elem.opts
+					} else {
+						t := variantStruct.Tag.Get(tagKey)
+						var err error
+						o, err = parseOptions(t)
+						if err != nil {
+							return nil, err
+						}
+						if o.unique {
+							uniqueValue = variantValue.String()
+						}
+					}
+
+					fmt.Println(strings.Join(make([]string, ctx.nested), "-----"), "classed", variantValue.Type(), variantValue.Kind(), variantStruct.Name, "asn1:", o.String())
+
+					raw, err := ctx.encode(variantValue, o)
+					if err != nil {
+						return nil, err
+					}
+					children = append(children, raw)
+				}
+
+			} else {
+				raw, err := ctx.encode(fieldValue, opts)
+				if err != nil {
+					return nil, err
+				}
+				children = append(children, raw)
 			}
-			children = append(children, raw)
 		}
 	}
 	return children, nil
@@ -326,4 +370,73 @@ func (ctx *Context) encodeChoices(choiceName string) func(reflect.Value) ([]byte
 		}
 		return content, nil
 	}
+}
+
+func (ctx *Context) encodeClassed(value reflect.Value) ([]byte, error) {
+	children := []*rawValue{}
+	for i := 0; i < value.NumField(); i++ {
+		fieldValue := value.Field(i)
+		fieldStruct := value.Type().Field(i)
+		// Ignore field that are not exported (that starts with lowercase)
+		if !isFieldExported(fieldStruct) {
+			continue
+		}
+
+		tag := fieldStruct.Tag.Get(tagKey)
+		opts, err := parseOptions(tag)
+		if err != nil {
+			return nil, err
+		}
+
+		// Skip if the ignore tag is given
+		if opts == nil {
+			continue
+		}
+
+		if opts.variant != nil {
+			for k := 0; k < fieldValue.NumField(); k++ {
+				variantValue := fieldValue.Field(k)
+				variantStruct := fieldValue.Type().Field(k)
+
+				entries, err := ctx.getVariantsByField(*opts.variant, variantStruct.Name)
+				if err != nil {
+					return nil, err
+				}
+
+				var o *fieldOptions
+				if len(entries) == 0 {
+					t := variantStruct.Tag.Get(tagKey)
+					var err error
+					o, err = parseOptions(t)
+					if err != nil {
+						return nil, err
+					}
+				} else {
+					o = entries[0].opts
+				}
+
+				fmt.Println(strings.Join(make([]string, ctx.nested), "-----"), "classed", variantValue.Type(), variantValue.Kind(), variantStruct.Name, "asn1:", o.String())
+
+				// TODO взять опции отсюда
+				raw, err := ctx.encode(variantValue, o)
+				if err != nil {
+					return nil, err
+				}
+				children = append(children, raw)
+			}
+
+		} else {
+			raw, err := ctx.encode(fieldValue, opts)
+			if err != nil {
+				return nil, err
+			}
+			children = append(children, raw)
+		}
+
+	}
+
+	for i, r := range children {
+		fmt.Printf("[%d] tag=%d\n", i, r.Tag)
+	}
+	return ctx.encodeRawValues(children...)
 }

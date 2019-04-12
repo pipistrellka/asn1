@@ -19,9 +19,11 @@ import (
 //	...
 //
 type Context struct {
-	log     *log.Logger
-	choices map[string][]choiceEntry
-	der     struct {
+	log      *log.Logger
+	choices  map[string][]choiceEntry
+	variants map[string][]variantEntry
+	nested   int
+	der      struct {
 		encoding bool
 		decoding bool
 	}
@@ -40,6 +42,21 @@ type choiceEntry struct {
 	opts *fieldOptions
 }
 
+type Variant struct {
+	Unique  string
+	Name    string
+	Type    reflect.Type
+	Options string
+}
+
+type variantEntry struct {
+	expectedElement
+	unique string
+	name   string
+	typ    reflect.Type
+	opts   *fieldOptions
+}
+
 // NewContext creates and initializes a new context. The returned Context does
 // not contains any registered choice and it's set to DER encoding and BER
 // decoding.
@@ -47,6 +64,7 @@ func NewContext() *Context {
 	ctx := &Context{}
 	ctx.log = defaultLogger()
 	ctx.choices = make(map[string][]choiceEntry)
+	ctx.variants = make(map[string][]variantEntry)
 	ctx.SetDer(true, false)
 	return ctx
 }
@@ -193,6 +211,93 @@ func (ctx *Context) AddChoice(choice string, entries []Choice) error {
 			return err
 		}
 	}
+	return nil
+}
+
+func (ctx *Context) AddVariants(scope string, entries []Variant) error {
+	fmt.Println("AddVariants:", scope)
+
+	for _, e := range entries {
+		opts, err := parseOptions(e.Options)
+		if err != nil {
+			return err
+		}
+		fmt.Println("parseOptions:", opts.String(), e.Type)
+
+		raw := rawValue{}
+		if opts.choice != nil || opts.choices != nil {
+			raw.Class = classContextSpecific
+		}
+		elem, err := ctx.getExpectedElement(&raw, e.Type, opts)
+		if err != nil {
+			return err
+		}
+
+		fmt.Println("add scope:", scope)
+		err = ctx.addVariantEntry(scope, variantEntry{
+			expectedElement: elem,
+			unique:          e.Unique,
+			name:            e.Name,
+			typ:             e.Type,
+			opts:            opts,
+		})
+		if err != nil {
+			return err
+		}
+
+	}
+
+	return nil
+}
+
+func (ctx *Context) getVariants(scope string) ([]variantEntry, error) {
+	entries := ctx.variants[scope]
+	if entries == nil {
+		return nil, syntaxError("invalid scope '%s'", scope)
+	}
+	return entries, nil
+}
+
+func (ctx *Context) getVariant(scope, binded, fieldName string) (variant variantEntry, err error) {
+	entries, err := ctx.getVariants(scope)
+	if err != nil {
+		return
+	}
+
+	for _, current := range entries {
+		if current.unique == binded && current.name == fieldName {
+			variant = current
+			return
+		}
+	}
+	err = syntaxError("not found '%s'-'%s' in scope '%s' variants", binded, fieldName, scope)
+	return
+}
+
+func (ctx *Context) getVariantsByField(scope, fieldName string) (fields []variantEntry, err error) {
+	entries, err := ctx.getVariants(scope)
+	if err != nil {
+		return
+	}
+
+	for _, current := range entries {
+		if current.name == fieldName {
+			fields = append(fields, current)
+		}
+	}
+	return
+}
+
+func (ctx *Context) addVariantEntry(scope string, entry variantEntry) error {
+	for _, current := range ctx.variants[scope] {
+		if current.unique == entry.unique {
+			return fmt.Errorf(
+				"variant already registered: %s{%s, %s}",
+				scope, current.unique, entry.unique)
+		}
+	}
+	ctx.variants[scope] = append(ctx.variants[scope], entry)
+	fmt.Println(ctx.variants)
 	return nil
 }
 
