@@ -197,6 +197,7 @@ func (ctx *Context) AddChoice(choice string, entries []Choice) error {
 				"nested choices are not allowed: '%s' inside '%s'",
 				*opts.choice, choice)
 		}
+		// костыль который не используется. нужен только для choice, который не поддерживается
 		raw := rawValue{}
 		elem, err := ctx.getExpectedElement(&raw, e.Type, opts)
 		if err != nil {
@@ -215,16 +216,14 @@ func (ctx *Context) AddChoice(choice string, entries []Choice) error {
 }
 
 func (ctx *Context) AddVariants(scope string, entries []Variant) error {
-	fmt.Println("AddVariants:", scope)
-
 	for _, e := range entries {
 		opts, err := parseOptions(e.Options)
 		if err != nil {
 			return err
 		}
-		fmt.Println("parseOptions:", opts.String(), e.Type)
 
 		raw := rawValue{}
+		//TODO первый костыль
 		if opts.choice != nil || opts.choices != nil {
 			raw.Class = classContextSpecific
 		}
@@ -233,7 +232,7 @@ func (ctx *Context) AddVariants(scope string, entries []Variant) error {
 			return err
 		}
 
-		fmt.Println("add scope:", scope)
+		// fmt.Println("add scope:", scope)
 		err = ctx.addVariantEntry(scope, variantEntry{
 			expectedElement: elem,
 			unique:          e.Unique,

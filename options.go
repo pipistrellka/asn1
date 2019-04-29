@@ -134,7 +134,7 @@ func (opts *fieldOptions) String() string {
 		result = append(result, "set")
 	}
 	if opts.tag != nil {
-		result = append(result, strconv.Itoa(*opts.tag))
+		result = append(result, fmt.Sprintf("tag:%s", strconv.Itoa(*opts.tag)))
 	}
 	if opts.choice != nil {
 		result = append(result, fmt.Sprintf("choice:%s", *opts.choice))

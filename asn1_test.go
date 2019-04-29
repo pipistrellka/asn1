@@ -751,6 +751,43 @@ func TestArrayOfChoices(t *testing.T) {
 	}
 }
 
+func TestChoiceOfChoices(t *testing.T) {
+	type TypeChoice struct {
+		Choice interface{} `asn1:"choice:msg"`
+	}
+	type Type struct {
+		Num int        `asn1:"tag:0"`
+		Msg TypeChoice `asn1:"tag:1"`
+	}
+	type VariantTimes []interface{}
+
+	ctx := NewContext()
+	ctx.AddChoice("times", []Choice{
+		{reflect.TypeOf(UTCTime{time.Now()}), "tag:1"},
+		{reflect.TypeOf(0), "tag:0"},
+	})
+	ctx.AddChoice("msg", []Choice{
+		{reflect.TypeOf(int(0)), "tag:0"},
+		{reflect.TypeOf(VariantTimes{}), "tag:8,choices:times"},
+	})
+
+	obj := Type{1, TypeChoice{VariantTimes{UTCTime{time.Date(2019, time.Month(4), 18, 16, 36, 54, 0, time.UTC)}, 2}}}
+	data, err := ctx.Encode(obj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	decodedObj := Type{}
+	_, err = ctx.Decode(data, &decodedObj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(decodedObj, obj) {
+		t.Fatalf("Incorrect choice value.\n Expected: %v\t Got: %v", obj, decodedObj)
+	}
+}
+
 // TAGGED ::= CLASS {
 // 	&id ObjectDescriptor UNIQUE,
 // 	&Data
@@ -760,12 +797,12 @@ func TestArrayOfChoices(t *testing.T) {
 // }
 func TestClassObjects(t *testing.T) {
 	type Tagged struct {
-		ID   string `asn1:"universal,tag:7"`
+		ID   string `asn1:"universal,tag:7,unique"`
 		Data interface{}
 	}
 	type Type struct {
+		Items []int  `asn1:"optional"`
 		Name  string `asn1:"universal,tag:12"`
-		Items []int
 		Info  Tagged `asn1:"variant:scope"`
 	}
 
@@ -774,7 +811,7 @@ func TestClassObjects(t *testing.T) {
 		{"12", "Data", reflect.TypeOf([]int{}), ""},
 		{"11", "Data", reflect.TypeOf([]string{}), ""},
 	})
-	obj := Type{"name", []int{2, 4, 6}, Tagged{"12", []int{1, 3, 5}}}
+	obj := Type{[]int{2, 4, 6}, "name", Tagged{"12", []int{1, 3, 5}}}
 
 	data, err := ctx.EncodeWithOptions(obj, "")
 	if err != nil {
@@ -826,7 +863,7 @@ func TestClassObjectWithOpts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fmt.Println(decodedObj.Info.Data)
+	fmt.Println(decodedObj.Info)
 
 	if !reflect.DeepEqual(decodedObj, obj) {
 		t.Fatalf("Incorrect variants value.\n Expected: %v\t Got: %v", obj, decodedObj)
@@ -848,7 +885,8 @@ func TestClassObjectWithChoices(t *testing.T) {
 		{reflect.TypeOf(""), "tag:1"},
 	})
 	ctx.AddChoice("times", []Choice{
-		{reflect.TypeOf(UTCTime{time.Now()}), "tag:0"},
+		{reflect.TypeOf(UTCTime{time.Now()}), "tag:1"},
+		{reflect.TypeOf(time.Now()), "tag:0"},
 	})
 	err := ctx.AddVariants("choices", []Variant{
 		{"1", "Data", reflect.TypeOf(struct{}{}), "choice:msg"},
@@ -864,7 +902,7 @@ func TestClassObjectWithChoices(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if hex.EncodeToString(data) != "3012070132800d3139303430313030303030305a" {
+	if hex.EncodeToString(data) != "3012070132810d3139303430313030303030305a" {
 		t.Fatalf("Encode failed: get %s", hex.EncodeToString(data))
 	}
 

@@ -6,7 +6,6 @@ import (
 	"io"
 	"reflect"
 	"sort"
-	"strings"
 )
 
 // Expected values
@@ -19,8 +18,10 @@ type expectedElement struct {
 // Expected values for fields
 type expectedFieldElement struct {
 	expectedElement
-	value reflect.Value
-	opts  *fieldOptions
+	value     reflect.Value
+	opts      *fieldOptions
+	isVariant bool
+	children  map[string][]expectedFieldElement
 }
 
 // Decode parses the given data into obj. The argument obj should be a reference
@@ -229,6 +230,7 @@ func (ctx *Context) getExpectedElement(raw *rawValue, elemType reflect.Type, opt
 	}
 
 	if opts.choice != nil {
+		//fmt.Println("getExpectedElement", *opts.choice, raw.Class, raw.Tag)
 		// Get the registered choices
 		var entry choiceEntry
 		entry, err = ctx.getChoiceByTag(*opts.choice, raw.Class, raw.Tag)
@@ -239,7 +241,7 @@ func (ctx *Context) getExpectedElement(raw *rawValue, elemType reflect.Type, opt
 		// Get the decoder for the new value
 		elem.class, elem.tag = raw.Class, raw.Tag
 		elem.decoder = func(data []byte, value reflect.Value) error {
-			fmt.Println("decoder choice", *opts.choice, entry.typ, value.Type())
+			//fmt.Println("decoder choice", *opts.choice, entry.typ, value.Type())
 			// Allocate a new value and set to the current one
 			nestedValue := reflect.New(entry.typ).Elem()
 			err = entry.decoder(data, nestedValue)
@@ -274,6 +276,9 @@ func (ctx *Context) getUniversalTag(objType reflect.Type, opts *fieldOptions) (e
 	case oidType:
 		elem.tag = tagOid
 		elem.decoder = ctx.decodeOid
+	case objDescriptorType:
+		elem.tag = tagObjDescriptor
+		elem.decoder = ctx.decodeObjectDescriptor
 	case nullType:
 		elem.tag = tagNull
 		elem.decoder = ctx.decodeNull
@@ -340,12 +345,16 @@ func (ctx *Context) getUniversalTagByKind(objType reflect.Type, opts *fieldOptio
 		case reflect.Uint8:
 			elem.tag = tagOctetString
 			elem.decoder = ctx.decodeOctetString
-		case reflect.Interface:
-			elem.tag = tagSequence
-			elem.decoder = ctx.decodeChoices(*opts.choices)
+		// case reflect.Interface:
+		// 	elem.tag = tagSequence
+		// 	elem.decoder = ctx.decodeChoices(*opts.choices)
 		default:
 			elem.tag = tagSequence
-			elem.decoder = ctx.decodeSlice
+			if opts.choices != nil {
+				elem.decoder = ctx.decodeChoices(*opts.choices)
+			} else {
+				elem.decoder = ctx.decodeSlice
+			}
 		}
 	}
 	return
@@ -370,7 +379,7 @@ func (ctx *Context) getExpectedFieldElements(value reflect.Value) ([]expectedFie
 			raw := &rawValue{}
 
 			if opts.variant != nil {
-				fmt.Println("varuant decode", *opts.variant)
+				// fmt.Println("variant decode", *opts.variant)
 				for k := 0; k < field.NumField(); k++ {
 					variantValue := field.Field(k)
 					variantStruct := field.Type().Field(k)
@@ -379,7 +388,7 @@ func (ctx *Context) getExpectedFieldElements(value reflect.Value) ([]expectedFie
 					if err != nil {
 						return nil, err
 					}
-					fmt.Println("entries", entries)
+					// fmt.Println("entries", entries)
 
 					if len(entries) == 0 {
 						t := variantStruct.Tag.Get(tagKey)
@@ -391,41 +400,52 @@ func (ctx *Context) getExpectedFieldElements(value reflect.Value) ([]expectedFie
 						if err != nil {
 							return nil, err
 						}
-						expectedValues = append(expectedValues, expectedFieldElement{elem, variantValue, o})
+						expectedValues = append(expectedValues, expectedFieldElement{expectedElement: elem, value: variantValue, opts: o})
 					} else {
 						// Get the decoder for the new value
-						var elem expectedElement
-						elem.class, elem.tag = entries[0].class, entries[0].tag
-						elem.decoder = func(data []byte, value reflect.Value) error {
-							// Allocate a new value and set to the current one
-							var nestedValue reflect.Value
-							var errors []string
-							var success bool
-							for _, entry := range entries {
-								// TODO: непонятно как инициализировать интерфейс
-								if entry.typ.String() != "struct {}" {
-									nestedValue = reflect.New(entry.typ).Elem()
-								} else {
-									nestedValue = variantValue // interface {}
-								}
-								fmt.Println("entry decoder", entry.typ.String(), "name:", entry.typ.Name(), "field:", variantValue.Type(), value)
-								err := entry.decoder(data, nestedValue)
-								if err == nil {
-									success = true
-									break
-								} else {
-									errors = append(errors, err.Error())
-								}
+						children := make(map[string][]expectedFieldElement)
+						for _, entry := range entries {
+							if children[entry.unique] == nil {
+								children[entry.unique] = make([]expectedFieldElement, 0)
 							}
-							if !success {
-								return fmt.Errorf("decode variant failed, try in %s", strings.Join(errors, ", "))
-							}
-							value.Set(nestedValue)
-							return nil
-						}
 
-						expectedValues = append(expectedValues,
-							expectedFieldElement{elem, variantValue, opts})
+							if entry.opts.choice != nil {
+								choices, err := ctx.getChoices(*entry.opts.choice)
+								if err != nil {
+									return nil, err
+								}
+								for _, choice := range choices {
+									raw.Class = choice.class
+									raw.Tag = choice.tag
+									elem, err := ctx.getExpectedElement(raw, variantValue.Type(), entry.opts)
+									if err != nil {
+										return nil, err
+									}
+
+									children[entry.unique] = append(children[entry.unique],
+										expectedFieldElement{expectedElement: elem, value: variantValue, opts: entry.opts})
+								}
+								continue
+							}
+
+							var elem expectedElement
+							elem.class, elem.tag = entry.class, entry.tag
+							elem.decoder = func(typ reflect.Type) decoderFunction {
+								return func(data []byte, value reflect.Value) error {
+									var nestedValue reflect.Value
+									nestedValue = reflect.New(typ).Elem()
+									err := entry.decoder(data, nestedValue)
+									if err != nil {
+										return err
+									}
+									value.Set(nestedValue)
+									return nil
+								}
+							}(entry.typ)
+							children[entry.unique] = append(children[entry.unique],
+								expectedFieldElement{expectedElement: elem, value: variantValue, opts: entry.opts})
+						}
+						expectedValues = append(expectedValues, expectedFieldElement{isVariant: true, children: children})
 					}
 				}
 				continue
@@ -437,7 +457,7 @@ func (ctx *Context) getExpectedFieldElements(value reflect.Value) ([]expectedFie
 					return nil, err
 				}
 				expectedValues = append(expectedValues,
-					expectedFieldElement{elem, field, opts})
+					expectedFieldElement{expectedElement: elem, value: field, opts: opts})
 			} else {
 				entries, err := ctx.getChoices(*opts.choice)
 				if err != nil {
@@ -451,7 +471,7 @@ func (ctx *Context) getExpectedFieldElements(value reflect.Value) ([]expectedFie
 						return nil, err
 					}
 					expectedValues = append(expectedValues,
-						expectedFieldElement{elem, field, opts})
+						expectedFieldElement{expectedElement: elem, value: field, opts: opts})
 				}
 			}
 		}
@@ -483,19 +503,32 @@ func (ctx *Context) getRawValuesFromBytes(data []byte, max int) ([]*rawValue, er
 func (ctx *Context) matchExpectedValues(eValues []expectedFieldElement, rValues []*rawValue) error {
 	// Try to match expected and raw values
 	rIndex := 0
+	var uniqValue string
+	// fmt.Println(len(eValues), "-", len(rValues), eValues)
 	for eIndex := 0; eIndex < len(eValues); eIndex++ {
 		e := eValues[eIndex]
 		// Using nil decoder to skip matched choices
-		if e.decoder == nil {
+		if e.decoder == nil && e.children == nil {
 			continue
 		}
 
 		missing := true
 		if rIndex < len(rValues) {
 			raw := rValues[rIndex]
-			fmt.Println(e.value.Type(), e.class, "=", raw.Class, e.tag, "=", raw.Tag, e.opts.String())
+			if e.isVariant && uniqValue != "" {
+				// fmt.Println("isVariant for", uniqValue, e.children[uniqValue], e.children)
+				err := ctx.matchExpectedValues(e.children[uniqValue], []*rawValue{raw})
+				if err != nil {
+					return err
+				}
+				missing = false
+				rIndex++
+				continue
+			}
+
+			// fmt.Println(e.value.Type(), e.class, "=", raw.Class, e.tag, "=", raw.Tag, e.opts.String())
 			if e.class == raw.Class && e.tag == raw.Tag {
-				fmt.Println("decoder element", e.value)
+				// fmt.Println("decoder element", e.value.Type(), "hex:", hex.EncodeToString(raw.Content))
 				err := e.decoder(raw.Content, e.value)
 				if err != nil {
 					return err
@@ -512,6 +545,11 @@ func (ctx *Context) matchExpectedValues(eValues []expectedFieldElement, rValues 
 						}
 					}
 				}
+			}
+
+			if e.opts.unique {
+				// fmt.Println("set unique", e.value, e.value.Type())
+				uniqValue = e.value.String()
 			}
 		}
 

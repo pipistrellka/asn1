@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
-	"strings"
 	"unicode"
 )
 
@@ -41,8 +40,8 @@ func (ctx *Context) EncodeWithOptions(obj interface{}, options string) (data []b
 
 // Main encode function
 func (ctx *Context) encode(value reflect.Value, opts *fieldOptions) (*rawValue, error) {
-	ctx.nested++
-	fmt.Println(strings.Join(make([]string, ctx.nested), "----"), "encode     ", value.Type(), value.Kind(), "asn1:", opts.String())
+	//ctx.nested++
+	//fmt.Println(strings.Join(make([]string, ctx.nested), "----"), "encode     ", value.Type(), value.Kind(), "asn1:", opts.String())
 
 	// Skip the interface type
 	value = getActualType(value)
@@ -65,7 +64,6 @@ func (ctx *Context) encode(value reflect.Value, opts *fieldOptions) (*rawValue, 
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println(strings.Join(make([]string, ctx.nested), "----"), "raw value tag", raw.Tag, "for", value.Type())
 
 	// Since the empty flag is already calculated, check if it's optional
 	if (opts.optional || opts.defaultValue != nil) && empty {
@@ -77,12 +75,13 @@ func (ctx *Context) encode(value reflect.Value, opts *fieldOptions) (*rawValue, 
 	if err != nil {
 		return nil, err
 	}
-	ctx.nested--
+	//fmt.Println(strings.Join(make([]string, ctx.nested), "----"), "raw value tag", raw.Tag, raw.Constructed, "for", value.Type(), opts.String())
+	//ctx.nested--
 	return raw, nil
 }
 
 func (ctx *Context) encodeValue(value reflect.Value, opts *fieldOptions) (raw *rawValue, err error) {
-	fmt.Println(strings.Join(make([]string, ctx.nested), "----"), "encodeValue", value.Type(), value.Kind(), "asn1:", opts.String())
+	//fmt.Println(strings.Join(make([]string, ctx.nested), "----"), "encodeValue", value.Type(), value.Kind(), "asn1:", opts.String(), raw)
 
 	raw = &rawValue{}
 	encoder := encoderFunction(nil)
@@ -99,6 +98,9 @@ func (ctx *Context) encodeValue(value reflect.Value, opts *fieldOptions) (raw *r
 	case oidType:
 		raw.Tag = tagOid
 		encoder = ctx.encodeOid
+	case objDescriptorType:
+		raw.Tag = tagObjDescriptor
+		encoder = ctx.encodeObjectDescriptor
 	case nullType:
 		raw.Tag = tagNull
 		encoder = ctx.encodeNull
@@ -142,14 +144,27 @@ func (ctx *Context) encodeValue(value reflect.Value, opts *fieldOptions) (raw *r
 			case reflect.Uint8:
 				raw.Tag = tagOctetString
 				encoder = ctx.encodeOctetString
-			case reflect.Interface:
-				raw.Tag = tagSequence
-				raw.Constructed = true
-				encoder = ctx.encodeChoices(*opts.choices)
+			// case reflect.Interface:
+			// 	raw.Tag = tagSequence
+			// 	raw.Constructed = true
+			// 	encoder = ctx.encodeChoices(*opts.choices)
 			default:
 				raw.Tag = tagSequence
 				raw.Constructed = true
-				encoder = ctx.encodeSlice
+				if opts.choice != nil {
+					entry, err := ctx.getChoiceByType(*opts.choice, value.Type())
+					if err != nil {
+						return nil, err
+					}
+
+					opts = entry.opts
+				}
+				if opts.choices != nil {
+					encoder = ctx.encodeChoices(*opts.choices)
+				} else {
+					encoder = ctx.encodeSlice
+				}
+
 			}
 		}
 	}
@@ -157,7 +172,7 @@ func (ctx *Context) encodeValue(value reflect.Value, opts *fieldOptions) (raw *r
 	if encoder == nil {
 		return nil, syntaxError("invalid Go type: %s", value.Type())
 	}
-	fmt.Println(strings.Join(make([]string, ctx.nested), "----"), "encoder    ", value.Type(), value.Kind(), "asn1:", opts.String())
+	//fmt.Println(strings.Join(make([]string, ctx.nested), "----"), "encoder    ", value.Type(), value.Kind(), "asn1:", opts.String())
 	raw.Content, err = encoder(value)
 	return
 }
@@ -283,7 +298,7 @@ func (ctx *Context) getRawValuesFromFields(value reflect.Value) ([]*rawValue, er
 						}
 					}
 
-					fmt.Println(strings.Join(make([]string, ctx.nested), "-----"), "classed", variantValue.Type(), variantValue.Kind(), variantStruct.Name, "asn1:", o.String())
+					//fmt.Println(strings.Join(make([]string, ctx.nested), "-----"), "classed", variantValue.Type(), variantValue.Kind(), variantStruct.Name, "asn1:", o.String())
 
 					raw, err := ctx.encode(variantValue, o)
 					if err != nil {
@@ -415,7 +430,7 @@ func (ctx *Context) encodeClassed(value reflect.Value) ([]byte, error) {
 					o = entries[0].opts
 				}
 
-				fmt.Println(strings.Join(make([]string, ctx.nested), "-----"), "classed", variantValue.Type(), variantValue.Kind(), variantStruct.Name, "asn1:", o.String())
+				//fmt.Println(strings.Join(make([]string, ctx.nested), "-----"), "classed", variantValue.Type(), variantValue.Kind(), variantStruct.Name, "asn1:", o.String())
 
 				// TODO взять опции отсюда
 				raw, err := ctx.encode(variantValue, o)

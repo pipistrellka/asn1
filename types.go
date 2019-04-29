@@ -10,12 +10,13 @@ import (
 
 // Pre-calculated types for convenience
 var (
-	bigIntType    = reflect.TypeOf((*big.Int)(nil))
-	bitStringType = reflect.TypeOf(BitString{})
-	oidType       = reflect.TypeOf(Oid{})
-	nullType      = reflect.TypeOf(Null{})
-	enumType      = reflect.TypeOf(Enum(0))
-	utcTimeType   = reflect.TypeOf(UTCTime{})
+	bigIntType        = reflect.TypeOf((*big.Int)(nil))
+	bitStringType     = reflect.TypeOf(BitString{})
+	oidType           = reflect.TypeOf(Oid{})
+	objDescriptorType = reflect.TypeOf(ObjectDescriptor(""))
+	nullType          = reflect.TypeOf(Null{})
+	enumType          = reflect.TypeOf(Enum(0))
+	utcTimeType       = reflect.TypeOf(UTCTime{})
 )
 
 /*
@@ -399,6 +400,24 @@ func (ctx *Context) decodeOid(data []byte, value reflect.Value) error {
 	return nil
 }
 
+//ObjectDescriptor ::= [UNIVERSAL 7] IMPLICIT GraphicString
+//The GraphicString contains the text describing the object.
+type ObjectDescriptor string
+
+func (ctx *Context) decodeObjectDescriptor(data []byte, value reflect.Value) error {
+	// TODO check value type
+	s := string(data)
+	value.SetString(s)
+	return nil
+}
+
+func (ctx *Context) encodeObjectDescriptor(value reflect.Value) ([]byte, error) {
+	if value.Kind() != reflect.String {
+		return nil, wrongType(reflect.String.String(), value)
+	}
+	return []byte(value.String()), nil
+}
+
 // Null is used to encode and decode ASN.1 NULLs.
 type Null struct{}
 
@@ -509,6 +528,10 @@ func (ctx *Context) decodeUTCTime(data []byte, value reflect.Value) error {
 	}
 	value.Set(reflect.ValueOf(UTCTime{tobj}))
 	return nil
+}
+
+func NewUTCTime() UTCTime {
+	return UTCTime{time.Now().UTC()}
 }
 
 func (ctx *Context) encodeUTCTime(value reflect.Value) ([]byte, error) {
