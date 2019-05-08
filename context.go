@@ -232,7 +232,6 @@ func (ctx *Context) AddVariants(scope string, entries []Variant) error {
 			return err
 		}
 
-		// fmt.Println("add scope:", scope)
 		err = ctx.addVariantEntry(scope, variantEntry{
 			expectedElement: elem,
 			unique:          e.Unique,
@@ -296,7 +295,6 @@ func (ctx *Context) addVariantEntry(scope string, entry variantEntry) error {
 		}
 	}
 	ctx.variants[scope] = append(ctx.variants[scope], entry)
-	fmt.Println(ctx.variants)
 	return nil
 }
 

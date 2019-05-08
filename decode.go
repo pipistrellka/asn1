@@ -146,7 +146,6 @@ func (ctx *Context) DecodeWithOptions(data []byte, obj interface{}, options stri
 	}
 
 	value := reflect.ValueOf(obj)
-	fmt.Println("Start decoding", value.Type(), value.Kind())
 
 	switch value.Kind() {
 	case reflect.Ptr, reflect.Interface:
@@ -160,7 +159,7 @@ func (ctx *Context) DecodeWithOptions(data []byte, obj interface{}, options stri
 	reader := bytes.NewBuffer(data)
 	err = ctx.decode(reader, value, opts)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decode for %s failed: %s", value.Type(), err)
 	}
 
 	return reader.Bytes(), nil
@@ -230,7 +229,6 @@ func (ctx *Context) getExpectedElement(raw *rawValue, elemType reflect.Type, opt
 	}
 
 	if opts.choice != nil {
-		//fmt.Println("getExpectedElement", *opts.choice, raw.Class, raw.Tag)
 		// Get the registered choices
 		var entry choiceEntry
 		entry, err = ctx.getChoiceByTag(*opts.choice, raw.Class, raw.Tag)
@@ -241,7 +239,6 @@ func (ctx *Context) getExpectedElement(raw *rawValue, elemType reflect.Type, opt
 		// Get the decoder for the new value
 		elem.class, elem.tag = raw.Class, raw.Tag
 		elem.decoder = func(data []byte, value reflect.Value) error {
-			//fmt.Println("decoder choice", *opts.choice, entry.typ, value.Type())
 			// Allocate a new value and set to the current one
 			nestedValue := reflect.New(entry.typ).Elem()
 			err = entry.decoder(data, nestedValue)
@@ -379,7 +376,6 @@ func (ctx *Context) getExpectedFieldElements(value reflect.Value) ([]expectedFie
 			raw := &rawValue{}
 
 			if opts.variant != nil {
-				// fmt.Println("variant decode", *opts.variant)
 				for k := 0; k < field.NumField(); k++ {
 					variantValue := field.Field(k)
 					variantStruct := field.Type().Field(k)
@@ -388,7 +384,6 @@ func (ctx *Context) getExpectedFieldElements(value reflect.Value) ([]expectedFie
 					if err != nil {
 						return nil, err
 					}
-					// fmt.Println("entries", entries)
 
 					if len(entries) == 0 {
 						t := variantStruct.Tag.Get(tagKey)
@@ -504,7 +499,6 @@ func (ctx *Context) matchExpectedValues(eValues []expectedFieldElement, rValues 
 	// Try to match expected and raw values
 	rIndex := 0
 	var uniqValue string
-	// fmt.Println(len(eValues), "-", len(rValues), eValues)
 	for eIndex := 0; eIndex < len(eValues); eIndex++ {
 		e := eValues[eIndex]
 		// Using nil decoder to skip matched choices
@@ -516,7 +510,6 @@ func (ctx *Context) matchExpectedValues(eValues []expectedFieldElement, rValues 
 		if rIndex < len(rValues) {
 			raw := rValues[rIndex]
 			if e.isVariant && uniqValue != "" {
-				// fmt.Println("isVariant for", uniqValue, e.children[uniqValue], e.children)
 				err := ctx.matchExpectedValues(e.children[uniqValue], []*rawValue{raw})
 				if err != nil {
 					return err
@@ -526,9 +519,7 @@ func (ctx *Context) matchExpectedValues(eValues []expectedFieldElement, rValues 
 				continue
 			}
 
-			// fmt.Println(e.value.Type(), e.class, "=", raw.Class, e.tag, "=", raw.Tag, e.opts.String())
 			if e.class == raw.Class && e.tag == raw.Tag {
-				// fmt.Println("decoder element", e.value.Type(), "hex:", hex.EncodeToString(raw.Content))
 				err := e.decoder(raw.Content, e.value)
 				if err != nil {
 					return err
@@ -548,7 +539,6 @@ func (ctx *Context) matchExpectedValues(eValues []expectedFieldElement, rValues 
 			}
 
 			if e.opts.unique {
-				// fmt.Println("set unique", e.value, e.value.Type())
 				uniqValue = e.value.String()
 			}
 		}
@@ -579,6 +569,10 @@ func (ctx *Context) setMissingFieldValue(e expectedFieldElement) error {
 
 // decodeStruct decodes struct fields in order
 func (ctx *Context) decodeStruct(data []byte, value reflect.Value) error {
+	// TODO: if all optional and empty
+	if len(data) == 0 {
+		return nil
+	}
 
 	expectedValues, err := ctx.getExpectedFieldElements(value)
 	if err != nil {

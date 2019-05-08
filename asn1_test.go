@@ -817,15 +817,12 @@ func TestClassObjects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Println(hex.EncodeToString(data))
 
 	decodedObj := Type{}
 	_, err = ctx.DecodeWithOptions(data, &decodedObj, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	fmt.Println(decodedObj.Info.Data)
 
 	if !reflect.DeepEqual(decodedObj, obj) {
 		t.Fatalf("Incorrect variants value.\n Expected: %v\t Got: %v", obj, decodedObj)
@@ -855,15 +852,12 @@ func TestClassObjectWithOpts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Println(hex.EncodeToString(data))
 
 	decodedObj := Type{}
 	_, err = ctx.Decode(data, &decodedObj)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	fmt.Println(decodedObj.Info)
 
 	if !reflect.DeepEqual(decodedObj, obj) {
 		t.Fatalf("Incorrect variants value.\n Expected: %v\t Got: %v", obj, decodedObj)
@@ -911,8 +905,6 @@ func TestClassObjectWithChoices(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	fmt.Println(decodedObj.Info.Data)
 
 	if !reflect.DeepEqual(decodedObj, obj) {
 		t.Fatalf("Incorrect variants value.\n Expected: %v\t Got: %v", obj, decodedObj)
