@@ -94,6 +94,9 @@ func (ctx *Context) encodeValue(value reflect.Value, opts *fieldOptions) (raw *r
 	case objDescriptorType:
 		raw.Tag = tagObjDescriptor
 		encoder = ctx.encodeObjectDescriptor
+	case utf8StringType:
+		raw.Tag = tagUTF8String
+		encoder = ctx.encodeUTF8String
 	case nullType:
 		raw.Tag = tagNull
 		encoder = ctx.encodeNull

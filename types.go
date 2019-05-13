@@ -17,6 +17,7 @@ var (
 	nullType          = reflect.TypeOf(Null{})
 	enumType          = reflect.TypeOf(Enum(0))
 	utcTimeType       = reflect.TypeOf(UTCTime{})
+	utf8StringType    = reflect.TypeOf(UTF8String(""))
 )
 
 /*
@@ -412,6 +413,23 @@ func (ctx *Context) decodeObjectDescriptor(data []byte, value reflect.Value) err
 }
 
 func (ctx *Context) encodeObjectDescriptor(value reflect.Value) ([]byte, error) {
+	if value.Kind() != reflect.String {
+		return nil, wrongType(reflect.String.String(), value)
+	}
+	return []byte(value.String()), nil
+}
+
+//UTF8String ::= [UNIVERSAL 12] UTF8String
+type UTF8String string
+
+func (ctx *Context) decodeUTF8String(data []byte, value reflect.Value) error {
+	// TODO check value type
+	s := string(data)
+	value.SetString(s)
+	return nil
+}
+
+func (ctx *Context) encodeUTF8String(value reflect.Value) ([]byte, error) {
 	if value.Kind() != reflect.String {
 		return nil, wrongType(reflect.String.String(), value)
 	}

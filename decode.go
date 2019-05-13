@@ -167,7 +167,6 @@ func (ctx *Context) DecodeWithOptions(data []byte, obj interface{}, options stri
 
 // Main decode function
 func (ctx *Context) decode(reader io.Reader, value reflect.Value, opts *fieldOptions) error {
-
 	// Parse an Asn.1 element
 	raw, err := decodeRawValue(reader)
 	if err != nil {
@@ -276,6 +275,9 @@ func (ctx *Context) getUniversalTag(objType reflect.Type, opts *fieldOptions) (e
 	case objDescriptorType:
 		elem.tag = tagObjDescriptor
 		elem.decoder = ctx.decodeObjectDescriptor
+	case utf8StringType:
+		elem.tag = tagUTF8String
+		elem.decoder = ctx.decodeUTF8String
 	case nullType:
 		elem.tag = tagNull
 		elem.decoder = ctx.decodeNull
