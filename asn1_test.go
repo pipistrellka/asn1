@@ -691,6 +691,35 @@ func TestExplicitChoice(t *testing.T) {
 	}
 }
 
+func TestEmptyOptionalChoice(t *testing.T) {
+	type Type struct {
+		Num int `asn1:"tag:0,optional"`
+		// Float float64     `asn1:"universal,tag:9,optional"`
+		Msg interface{} `asn1:"tag:1,optional,choice:msg"`
+	}
+
+	ctx := NewContext()
+	ctx.AddChoice("msg", []Choice{
+		{reflect.TypeOf(int(0)), "tag:0"},
+		{reflect.TypeOf(""), "tag:1"},
+	})
+
+	obj := Type{Num: 24}
+	data, err := ctx.Encode(obj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	decodedObj := Type{}
+	_, err = ctx.Decode(data, &decodedObj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(decodedObj, obj) {
+		t.Fatalf("Incorrect choice value.\n Expected: %v\t Got: %v", obj, decodedObj)
+	}
+}
 func TestNestedExplicitChoice(t *testing.T) {
 	type Type struct {
 		Num int

@@ -56,15 +56,15 @@ func (ctx *Context) encode(value reflect.Value, opts *fieldOptions) (*rawValue, 
 		}
 	}
 
+	// Since the empty flag is already calculated, check if it's optional
+	if (opts.optional || opts.defaultValue != nil) && empty {
+		return nil, nil
+	}
+
 	// Encode data
 	raw, err := ctx.encodeValue(value, opts)
 	if err != nil {
 		return nil, err
-	}
-
-	// Since the empty flag is already calculated, check if it's optional
-	if (opts.optional || opts.defaultValue != nil) && empty {
-		return nil, nil
 	}
 
 	// Modify the data generated based on the given tags
@@ -238,6 +238,9 @@ func (ctx *Context) applyOptions(value reflect.Value, raw *rawValue, opts *field
 
 // isEmpty checks is a value is empty.
 func isEmpty(value reflect.Value) bool {
+	if !value.IsValid() {
+		return true
+	}
 	defaultValue := reflect.Zero(value.Type())
 	return reflect.DeepEqual(value.Interface(), defaultValue.Interface())
 }
