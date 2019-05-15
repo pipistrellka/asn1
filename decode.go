@@ -323,6 +323,10 @@ func (ctx *Context) getUniversalTagByKind(objType reflect.Type, opts *fieldOptio
 		elem.tag = tagInteger
 		elem.decoder = ctx.decodeUint
 
+	case reflect.Float32, reflect.Float64:
+		elem.tag = tagReal
+		elem.decoder = ctx.decodeReal
+
 	case reflect.Struct:
 		elem.tag = tagSequence
 		elem.decoder = ctx.decodeStruct

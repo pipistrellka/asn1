@@ -127,6 +127,10 @@ func (ctx *Context) encodeValue(value reflect.Value, opts *fieldOptions) (raw *r
 			raw.Tag = tagInteger
 			encoder = ctx.encodeUint
 
+		case reflect.Float64, reflect.Float32:
+			raw.Tag = tagReal
+			encoder = ctx.encodeReal
+
 		case reflect.Struct:
 			raw.Tag = tagSequence
 			raw.Constructed = true

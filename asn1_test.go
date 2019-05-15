@@ -192,6 +192,14 @@ func TestSimpleInteger(t *testing.T) {
 	testEncodeDecode(t, ctx, "", tests...)
 }
 
+func TestReal(t *testing.T) {
+	tests := []testCase{
+		{float64(5.56), []byte{0x9, 0x9, 0x3, 0x35, 0x2e, 0x35, 0x36, 0x45, 0x2b, 0x30, 0x30}},
+	}
+	ctx := NewContext()
+	testEncodeDecode(t, ctx, "", tests...)
+}
+
 func TestSimpleString(t *testing.T) {
 	lenStr := func(length int, lenBytes ...byte) testCase {
 		buf := make([]byte, length)

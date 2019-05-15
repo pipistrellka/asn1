@@ -3,8 +3,11 @@ package asn1
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"math/big"
 	"reflect"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -179,6 +182,69 @@ func (ctx *Context) decodeUint(data []byte, value reflect.Value) error {
 		num |= uint64(data[i])
 	}
 	value.SetUint(num)
+	return nil
+}
+
+func (ctx *Context) encodeReal(value reflect.Value) ([]byte, error) {
+	switch value.Kind() {
+	case reflect.Float64, reflect.Float32:
+	default:
+		return nil, wrongType("float", value)
+	}
+	val := value.Float()
+	buf := bytes.Buffer{}
+	if math.IsInf(val, 1) {
+		buf.WriteByte(0x40)
+	} else if math.IsInf(val, -1) {
+		buf.WriteByte(0x41)
+	} else if math.IsNaN(val) {
+		buf.WriteByte(0x42)
+	} else {
+		//NR3 Base=10
+		buf.WriteByte(0x03)
+	}
+
+	buf.WriteString(strconv.FormatFloat(val, 'E', -1, 64))
+	return buf.Bytes(), nil
+}
+
+const (
+	demical = iota
+	special
+	binary
+)
+
+func (ctx *Context) decodeReal(data []byte, value reflect.Value) error {
+	if len(data) == 0 {
+		return nil
+	}
+
+	infoOctet := data[0]
+	val := float64(0)
+	switch infoOctet >> 6 {
+	case demical:
+		str := string(data[1:])
+		str = strings.Replace(str, ",", ".", -1)
+		str = strings.Trim(str, " \n\t\r")
+		var err error
+		val, err = strconv.ParseFloat(str, 64)
+		if err != nil {
+			return err
+		}
+	case special:
+		switch infoOctet {
+		case 0x40:
+			val = math.Inf(1)
+		case 0x41:
+			val = math.Inf(-1)
+		case 0x42, 0x43:
+			val = math.NaN()
+		}
+	case binary:
+		return fmt.Errorf("binary unsupported")
+	}
+
+	value.SetFloat(val)
 	return nil
 }
 
